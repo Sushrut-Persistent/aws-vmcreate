@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8/go-toolset:1.18.4-8.1669838000
+FROM registry.access.redhat.com/ubi8/ubi-minimal
 
 # Labels
 LABEL name="aws-vmcreate" \
@@ -15,14 +15,16 @@ WORKDIR /opt
 RUN chgrp -R 0 /opt && \
     chmod -R g=u /opt && \
     chmod +x -R /opt
+
+
 USER 1001
 ENV ec2_tag_key "Name"
-ENV ec2_tag_value "AWS_Test"
+ENV ec2_tag_value "SushrutAWSEC2"
 ENV ec2_command "create"
 #can be delete also
 
-COPY go.* ./
-COPY aws-vmcreate.go .
-RUN go mod download
-RUN go build -o aws-vmcreate
-CMD ["bash","-c","/opt/aws-vmcreate -c  $ec2_command -n $ec2_tag_key -v $ec2_tag_value "]
+# COPY go.* ./
+COPY aws-vmcreate aws-vmcreate
+# RUN go mod download
+# RUN go build -o aws-vmcreate
+CMD ["bash","-c","/opt/aws-vmcreate -c $ec2_command -n $ec2_tag_key -v $ec2_tag_value "]

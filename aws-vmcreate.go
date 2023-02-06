@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-
+	"strings"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -55,8 +55,41 @@ func MakeInstance(c context.Context, api EC2CreateInstanceAPI, input *ec2.RunIns
 func MakeTags(c context.Context, api EC2CreateInstanceAPI, input *ec2.CreateTagsInput) (*ec2.CreateTagsOutput, error) {
 	return api.CreateTags(c, input)
 }
-func DeleteInstancesCmd() {
-	fmt.Println("TO DO")
+
+type EC2TerminateInstanceAPI interface {
+	TerminateInstances(ctx context.Context,
+		params *ec2.TerminateInstancesInput,
+		optFns ...func(*ec2.Options)) (*ec2.TerminateInstancesOutput, error)
+}
+
+func DeleteInstance(c context.Context, api EC2TerminateInstanceAPI, input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error) {
+	return api.TerminateInstances(c, input)
+}
+
+func DeleteInstancesCmd(instanceId string) {
+
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		panic("configuration error, " + err.Error())
+	}
+
+	client := ec2.NewFromConfig(cfg)
+
+	instances := strings.Split(instanceId, ",")
+
+	input := &ec2.TerminateInstancesInput{
+		InstanceIds: instances,
+		DryRun:      new(bool),
+	}
+
+	result, err := DeleteInstance(context.TODO(), client, input)
+	if err != nil {
+		fmt.Println("Got an error terminating the instance:")
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("Terminated instance with id: ", *result.TerminatingInstances[0].InstanceId)
 }
 
 func CreateInstancesCmd(name *string, value *string) {
@@ -96,6 +129,7 @@ func CreateInstancesCmd(name *string, value *string) {
 
 	fmt.Println("Created tagged instance with ID " + *result.Instances[0].InstanceId)
 }
+
 func init() {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
@@ -104,29 +138,30 @@ func init() {
 	client = ec2.NewFromConfig(cfg)
 
 }
+
 func main() {
 	fmt.Println("Provisioning/De-provisioning EC2 in progress")
 	command := flag.String("c", "", "command  create or delete")
 	name := flag.String("n", "", "The name of the tag to attach to the instance")
 	value := flag.String("v", "", "The value of the tag to attach to the instance")
+	instanceId := flag.String("i", "", "The IDs of the instance to terminate")
 
 	flag.Parse()
 
-	if *command == "" {
-		fmt.Println("You must supply an command  start or stop (-c start")
-		return
-	}
-
-	if *name == "" || *value == "" {
-		fmt.Println("You must supply a name and value for the tag (-n NAME -v VALUE)")
-		return
-	}
-
 	if *command == "create" {
+		if *name == "" || *value == "" {
+			fmt.Println("You must supply a name and value for the tag (-n TagName -v TagValue)")
+			return
+		}
 		CreateInstancesCmd(name, value)
-	}
-
-	if *command == "delete" {
-		DeleteInstancesCmd()
+	} else if *command == "delete" {
+		if *instanceId == "" {
+			fmt.Println("You must supply an instance ID (-i InstanceID")
+			return
+		}
+		DeleteInstancesCmd(*instanceId)
+	} else {
+		fmt.Println("You must supply an command create or delete (-c create")
+		return
 	}
 }
