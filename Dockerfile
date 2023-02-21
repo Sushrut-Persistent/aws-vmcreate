@@ -19,12 +19,15 @@ RUN chgrp -R 0 /opt && \
 
 USER 1001
 ENV ec2_tag_key "Name"
-ENV ec2_tag_value "SushrutAWSEC2"
+ENV ec2_tag_value "Default"
 ENV ec2_command "create"
-#can be delete also
+#can be "delete" also
+# ENV ec2_instance_type "t2.micro"
+# ENV ec2_image_id "ami-0d0ca2066b861631c"
 
 # COPY go.* ./
 COPY aws-vmcreate aws-vmcreate
 # RUN go mod download
 # RUN go build -o aws-vmcreate
+# CMD ["bash","-c","/opt/aws-vmcreate -c $ec2_command -n $ec2_tag_key -v $ec2_tag_value -ii $ec2_image_id -it $ec2_instance_type "]
 CMD ["bash","-c","/opt/aws-vmcreate -c $ec2_command -n $ec2_tag_key -v $ec2_tag_value "]

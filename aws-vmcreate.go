@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
-	"strings"
 	"fmt"
+	// "time"
+	"strings"
+	"os"
+
+	// "io/ioutil"
+	// "log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -24,6 +30,11 @@ type EC2CreateInstanceAPI interface {
 	CreateTags(ctx context.Context,
 		params *ec2.CreateTagsInput,
 		optFns ...func(*ec2.Options)) (*ec2.CreateTagsOutput, error)
+}
+
+type Config struct {
+	InstanceType string `json:"instance-type"`
+	ImageId      string `json:"image-id"`
 }
 
 // MakeInstance creates an Amazon Elastic Compute Cloud (Amazon EC2) instance.
@@ -66,39 +77,96 @@ func DeleteInstance(c context.Context, api EC2TerminateInstanceAPI, input *ec2.T
 	return api.TerminateInstances(c, input)
 }
 
-func DeleteInstancesCmd(instanceId string) {
+func DeleteInstancesCmd(name *string, value *string) {
 
-	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		panic("configuration error, " + err.Error())
+	var instances = make([]string, 0)
+
+	fmt.Println("Deleting instances with " + *name + "= " + *value)
+
+	val := strings.Split(*value, ",")
+	tag := "tag:" + *name
+
+	input1 := &ec2.DescribeInstancesInput{
+		Filters: []types.Filter{
+			{
+				Name:   aws.String(tag),
+				Values: val,
+			},
+		},
 	}
 
-	client := ec2.NewFromConfig(cfg)
+	descResult, err := client.DescribeInstances(context.TODO(), input1)
+	if err != nil {
+		fmt.Println("Got an error fetching the status of the instance")
+		fmt.Println(err)
+		return
+	}
 
-	instances := strings.Split(instanceId, ",")
+	for _, r := range descResult.Reservations {
+		fmt.Println("Instance IDs:")
+		for _, i := range r.Instances {
+			//value := *i.InstanceId
+			instances = append(instances, *i.InstanceId)
+		}
+		fmt.Println(instances)
+	}
 
 	input := &ec2.TerminateInstancesInput{
 		InstanceIds: instances,
 		DryRun:      new(bool),
 	}
 
-	result, err := DeleteInstance(context.TODO(), client, input)
+	delResult, err := DeleteInstance(context.TODO(), client, input)
 	if err != nil {
 		fmt.Println("Got an error terminating the instance:")
 		fmt.Println(err)
 		return
 	}
 
-	fmt.Println("Terminated instance with id: ", *result.TerminatingInstances[0].InstanceId)
+	fmt.Println("Terminated instance with id: ", *delResult.TerminatingInstances[0].InstanceId)
 }
 
 func CreateInstancesCmd(name *string, value *string) {
 	// Create separate values if required.
 	minMaxCount := int32(1)
 
+	// data, err := ioutil.ReadFile("/etc/config/config.json")
+	// if err != nil {
+	// 	log.Fatalf("Error reading config file: %v", err)
+	// }
+
+	// var config Config
+	// if err := json.Unmarshal(data, &config); err != nil {
+	// 	log.Fatalf("Error unmarshaling config: %v", err)
+	// }
+
+	// var insType types.InstanceType
+	// insType = types.InstanceType(config.InstanceType)
+	// var imgId *string
+	// imgId = &config.ImageID
+
+	var config Config
+
+	file, err := os.Open("config/config.json")
+	if err != nil {
+		fmt.Println("Error opening config file:", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	err = json.NewDecoder(file).Decode(&config)
+	if err != nil {
+		fmt.Println("Error decoding config:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Configmap data:", config.ImageId, config.InstanceType)
+
 	input := &ec2.RunInstancesInput{
-		ImageId:      aws.String("ami-0d0ca2066b861631c"),
-		InstanceType: types.InstanceTypeT2Micro,
+		// ImageId:      aws.String("ami-0d0ca2066b861631c"),
+		// InstanceType: types.InstanceTypeT2Micro,
+		ImageId:      aws.String(config.ImageId),
+		InstanceType: (types.InstanceType)(config.InstanceType),
 		MinCount:     &minMaxCount,
 		MaxCount:     &minMaxCount,
 	}
@@ -114,8 +182,8 @@ func CreateInstancesCmd(name *string, value *string) {
 		Resources: []string{*result.Instances[0].InstanceId},
 		Tags: []types.Tag{
 			{
-				Key:   name,
-				Value: value,
+				Key:   	name,
+				Value: 	value,
 			},
 		},
 	}
@@ -144,9 +212,10 @@ func main() {
 	command := flag.String("c", "", "command  create or delete")
 	name := flag.String("n", "", "The name of the tag to attach to the instance")
 	value := flag.String("v", "", "The value of the tag to attach to the instance")
-	instanceId := flag.String("i", "", "The IDs of the instance to terminate")
 
 	flag.Parse()
+
+	// time.Sleep(5 * time.Minute)
 
 	if *command == "create" {
 		if *name == "" || *value == "" {
@@ -155,13 +224,14 @@ func main() {
 		}
 		CreateInstancesCmd(name, value)
 	} else if *command == "delete" {
-		if *instanceId == "" {
-			fmt.Println("You must supply an instance ID (-i InstanceID")
+		if *name == "" || *value == "" {
+			fmt.Println("You must supply a name and value for the tag (-n TagName -v TagValue)")
 			return
 		}
-		DeleteInstancesCmd(*instanceId)
+		DeleteInstancesCmd(name, value)
 	} else {
 		fmt.Println("You must supply an command create or delete (-c create")
 		return
 	}
 }
+// End
